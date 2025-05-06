@@ -1,7 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Redirect } from "wouter";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -10,7 +9,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 const loginSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
@@ -25,8 +25,10 @@ const registerSchema = z.object({
 });
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("login");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -46,18 +48,59 @@ export default function AuthPage() {
     },
   });
 
-  const onLoginSubmit = (data: z.infer<typeof loginSchema>) => {
-    loginMutation.mutate(data);
+  const onLoginSubmit = async (data: z.infer<typeof loginSchema>) => {
+    try {
+      setIsLoggingIn(true);
+      const res = await apiRequest("POST", "/api/login", data);
+      
+      if (res.ok) {
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully logged in.",
+        });
+        // Redirect to home page after successful login
+        window.location.href = "/";
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Invalid username or password");
+      }
+    } catch (error) {
+      toast({
+        title: "Login failed",
+        description: error instanceof Error ? error.message : "Failed to login",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
-  const onRegisterSubmit = (data: z.infer<typeof registerSchema>) => {
-    registerMutation.mutate(data);
+  const onRegisterSubmit = async (data: z.infer<typeof registerSchema>) => {
+    try {
+      setIsRegistering(true);
+      const res = await apiRequest("POST", "/api/register", data);
+      
+      if (res.ok) {
+        toast({
+          title: "Account created",
+          description: "Your account has been created successfully.",
+        });
+        // Redirect to home page after successful registration
+        window.location.href = "/";
+      } else {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Could not create your account");
+      }
+    } catch (error) {
+      toast({
+        title: "Registration failed",
+        description: error instanceof Error ? error.message : "Failed to register",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegistering(false);
+    }
   };
-
-  // Redirect if already logged in
-  if (user) {
-    return <Redirect to="/" />;
-  }
 
   return (
     <div className="min-h-screen bg-neutral-light flex items-center justify-center p-4">
@@ -107,8 +150,8 @@ export default function AuthPage() {
                           </FormItem>
                         )}
                       />
-                      <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
-                        {loginMutation.isPending ? (
+                      <Button type="submit" className="w-full" disabled={isLoggingIn}>
+                        {isLoggingIn ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Please wait
                           </>
@@ -175,8 +218,8 @@ export default function AuthPage() {
                           </FormItem>
                         )}
                       />
-                      <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
-                        {registerMutation.isPending ? (
+                      <Button type="submit" className="w-full" disabled={isRegistering}>
+                        {isRegistering ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating account
                           </>

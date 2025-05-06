@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,12 +12,39 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Search, Moon, Bell, Menu, X, User, LogOut, Settings } from "lucide-react";
+import { User as UserType } from "@shared/schema";
 
 export default function Navbar() {
   const [location] = useLocation();
-  const { user, logoutMutation } = useAuth();
+  const { toast } = useToast();
+  const [user, setUser] = useState<UserType | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch user data
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        setIsLoading(true);
+        const res = await fetch('/api/user');
+        if (res.ok) {
+          const userData = await res.json();
+          setUser(userData);
+        } else {
+          // Not logged in or session expired
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUser();
+  }, []);
 
   // Handle scroll effect
   useEffect(() => {
@@ -34,8 +62,25 @@ export default function Navbar() {
     setMobileMenuOpen(!mobileMenuOpen);
   };
 
-  const handleLogout = () => {
-    logoutMutation.mutate();
+  const handleLogout = async () => {
+    try {
+      const res = await apiRequest('POST', '/api/logout');
+      if (res.ok) {
+        setUser(null);
+        toast({
+          title: "Logged out",
+          description: "You have been logged out successfully."
+        });
+        // Redirect to home page
+        window.location.href = "/";
+      }
+    } catch (error) {
+      toast({
+        title: "Logout failed",
+        description: error instanceof Error ? error.message : "Could not log out",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -85,7 +130,7 @@ export default function Navbar() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="gap-2">
                     <User className="h-4 w-4" />
-                    <span>{user.displayName || user.username}</span>
+                    <span>{user?.displayName || user?.username}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -156,7 +201,7 @@ export default function Navbar() {
               <div className="border-t border-gray-200 pt-3 flex justify-between px-3">
                 {user ? (
                   <div className="space-y-2 w-full">
-                    <div className="font-medium">{user.displayName || user.username}</div>
+                    <div className="font-medium">{user?.displayName || user?.username}</div>
                     <div className="space-y-1">
                       <Link href="/profile" className="block py-1 text-neutral-dark hover:text-primary">
                         Profile
