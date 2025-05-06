@@ -149,6 +149,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Price comparison for a specific product (multi-store price comparison)
+  app.get("/api/products/:id/price-comparison", async (req, res) => {
+    try {
+      const productId = parseInt(req.params.id);
+      const product = await storage.getProductById(productId);
+      
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      
+      // Generate price comparison data
+      // In a real app, this would come from a price scraping service
+      const basePrice = product.price ? (product.price / 100) : 699.99; // Convert cents to dollars or use default
+      const priceComparisons = [
+        {
+          store: "Amazon",
+          price: parseFloat((basePrice - Math.random() * 50).toFixed(2)),
+          link: "https://amazon.com",
+          inStock: true,
+          shipping: "Free shipping",
+          logo: "/amazon-logo.svg"
+        },
+        {
+          store: "Apple",
+          price: parseFloat((basePrice + 20).toFixed(2)),
+          link: "https://apple.com",
+          inStock: true,
+          shipping: "Free shipping",
+          logo: "/apple-logo.svg"
+        },
+        {
+          store: "Best Buy",
+          price: parseFloat((basePrice - Math.random() * 20).toFixed(2)),
+          link: "https://bestbuy.com",
+          inStock: true,
+          shipping: "$4.99 shipping",
+          logo: "/bestbuy-logo.svg"
+        },
+        {
+          store: "eBay",
+          price: parseFloat((basePrice - Math.random() * 100).toFixed(2)),
+          link: "https://ebay.com",
+          inStock: true,
+          shipping: "$9.99 shipping",
+          logo: "/ebay-logo.svg"
+        },
+        {
+          store: "Walmart",
+          price: parseFloat((basePrice - Math.random() * 70).toFixed(2)),
+          link: "https://walmart.com",
+          inStock: Math.random() > 0.3, // 70% chance of being in stock
+          shipping: "Free shipping",
+          logo: "/walmart-logo.svg"
+        }
+      ];
+      
+      // Sort by price (lowest first) but prioritize in-stock items
+      priceComparisons.sort((a, b) => 
+        a.inStock === b.inStock ? a.price - b.price : a.inStock ? -1 : 1
+      );
+      
+      res.json({
+        productId,
+        productName: product.name,
+        lastUpdated: new Date().toISOString(),
+        priceComparisons
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch price comparison" });
+    }
+  });
+  
   // Destinations
   app.get("/api/destinations", async (req, res) => {
     try {

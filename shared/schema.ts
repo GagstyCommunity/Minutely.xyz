@@ -41,6 +41,7 @@ export const products = pgTable("products", {
   categoryId: integer("category_id"),
   imageUrl: text("image_url"),
   rating: integer("rating"),
+  price: integer("price"), // Price in cents to avoid floating point issues
 });
 
 export const productComparisons = pgTable("product_comparisons", {
@@ -121,6 +122,7 @@ export const insertProductSchema = createInsertSchema(products).pick({
   categoryId: true,
   imageUrl: true,
   rating: true,
+  price: true,
 });
 
 export const insertDestinationSchema = createInsertSchema(destinations).pick({

@@ -39,66 +39,28 @@ export default function ProductPage() {
     queryKey: ["/api/categories"],
   });
   
-  // Mock price comparison data
-  // In a real app, this would come from an API that scrapes prices
+  // Price comparison data
   const [priceComparisons, setPriceComparisons] = useState<PriceComparison[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<string>("");
   
-  // Set mock price comparison data for demo purposes
-  useEffect(() => {
-    if (product) {
-      // Generate random prices around a base price
-      const basePrice = 699.99;
-      const mockPriceComparisons: PriceComparison[] = [
-        {
-          store: "Amazon",
-          price: parseFloat((basePrice - Math.random() * 50).toFixed(2)),
-          link: "https://amazon.com",
-          inStock: true,
-          shipping: "Free shipping",
-          logo: "/amazon-logo.svg" // This would be an actual logo path in production
-        },
-        {
-          store: "Apple",
-          price: parseFloat((basePrice + 20).toFixed(2)),
-          link: "https://apple.com",
-          inStock: true,
-          shipping: "Free shipping",
-          logo: "/apple-logo.svg"
-        },
-        {
-          store: "Best Buy",
-          price: parseFloat((basePrice - Math.random() * 20).toFixed(2)),
-          link: "https://bestbuy.com",
-          inStock: true,
-          shipping: "$4.99 shipping",
-          logo: "/bestbuy-logo.svg"
-        },
-        {
-          store: "eBay",
-          price: parseFloat((basePrice - Math.random() * 100).toFixed(2)),
-          link: "https://ebay.com",
-          inStock: true,
-          shipping: "$9.99 shipping",
-          logo: "/ebay-logo.svg"
-        },
-        {
-          store: "Walmart",
-          price: parseFloat((basePrice - Math.random() * 70).toFixed(2)),
-          link: "https://walmart.com",
-          inStock: false,
-          shipping: "Free shipping",
-          logo: "/walmart-logo.svg"
-        }
-      ];
+  // Fetch price comparison data from the API
+  const { isLoading: isLoadingPrices } = useQuery({
+    queryKey: ["/api/products", productId, "price-comparison"],
+    queryFn: async () => {
+      if (!product) return null;
       
-      // Sort by price (lowest first)
-      mockPriceComparisons.sort((a, b) => 
-        a.inStock === b.inStock ? a.price - b.price : a.inStock ? -1 : 1
-      );
+      const res = await fetch(`/api/products/${productId}/price-comparison`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch price comparison");
+      }
       
-      setPriceComparisons(mockPriceComparisons);
-    }
-  }, [product]);
+      const data = await res.json();
+      setPriceComparisons(data.priceComparisons);
+      setLastUpdated(data.lastUpdated);
+      return data;
+    },
+    enabled: !!product,
+  });
   
   // Set page title
   useEffect(() => {
@@ -313,7 +275,7 @@ export default function ProductPage() {
                 </div>
                 
                 <div className="mt-4 text-xs text-neutral-medium">
-                  <p>Prices last updated: May 6, 2025</p>
+                  <p>Prices last updated: {lastUpdated ? new Date(lastUpdated).toLocaleString() : 'May 6, 2025'}</p>
                   <p>Minutely.xyz may earn a commission on sales made from links on this page.</p>
                 </div>
               </div>
