@@ -1,8 +1,15 @@
-import { users, categories, articles, products, productComparisons, destinations, challenges, userBadges, userChallenges, type User, type InsertUser, type Category, type InsertCategory, type Article, type InsertArticle, type Product, type InsertProduct, type Destination, type InsertDestination, type Challenge, type InsertChallenge } from "@shared/schema";
+import { users, type User, type InsertUser } from "@shared/schema";
+import { articles, type Article, type InsertArticle } from "@shared/schema";
+import { categories, type Category, type InsertCategory } from "@shared/schema";
+import { products, type Product, type InsertProduct } from "@shared/schema";
+import { destinations, type Destination, type InsertDestination } from "@shared/schema";
+import { challenges, type Challenge, type InsertChallenge } from "@shared/schema";
+import { userBadges, userChallenges } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, count } from "drizzle-orm";
 import session from "express-session";
-import createMemoryStore from "memorystore";
-
-const MemoryStore = createMemoryStore(session);
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
 export interface IStorage {
   // User operations
@@ -53,168 +60,109 @@ export interface IStorage {
   sessionStore: session.SessionStore;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private categories: Map<number, Category>;
-  private articles: Map<number, Article>;
-  private products: Map<number, Product>;
-  private productComparisons: Map<number, any>;
-  private destinations: Map<number, Destination>;
-  private challenges: Map<number, Challenge>;
-  private userBadges: Map<number, any>;
-  private userChallenges: Map<number, any>;
-  
+const PostgresSessionStore = connectPg(session);
+
+export class DatabaseStorage implements IStorage {
   sessionStore: session.SessionStore;
   
-  private currentIds: {
-    users: number;
-    categories: number;
-    articles: number;
-    products: number;
-    productComparisons: number;
-    destinations: number;
-    challenges: number;
-    userBadges: number;
-    userChallenges: number;
-  };
-
   constructor() {
-    this.users = new Map();
-    this.categories = new Map();
-    this.articles = new Map();
-    this.products = new Map();
-    this.productComparisons = new Map();
-    this.destinations = new Map();
-    this.challenges = new Map();
-    this.userBadges = new Map();
-    this.userChallenges = new Map();
-    
-    this.currentIds = {
-      users: 1,
-      categories: 1,
-      articles: 1,
-      products: 1,
-      productComparisons: 1,
-      destinations: 1,
-      challenges: 1,
-      userBadges: 1,
-      userChallenges: 1,
-    };
-    
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // 24 hours
+    this.sessionStore = new PostgresSessionStore({ 
+      pool, 
+      createTableIfMissing: true 
     });
-    
-    // Initialize with some demo data
-    this.initializeData();
-  }
-
-  private initializeData() {
-    // Initialize categories
-    const categories = [
-      { id: this.currentIds.categories++, name: 'Tech', slug: 'tech', description: 'Technology news and updates', imageUrl: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485', articleCount: 143 },
-      { id: this.currentIds.categories++, name: 'Products', slug: 'products', description: 'Product reviews and comparisons', imageUrl: 'https://images.unsplash.com/photo-1491933382434-500287f9b54b', articleCount: 98 },
-      { id: this.currentIds.categories++, name: 'Travel', slug: 'travel', description: 'Travel destinations and guides', imageUrl: 'https://images.unsplash.com/photo-1507608616759-54f48f0af0ee', articleCount: 76 },
-      { id: this.currentIds.categories++, name: 'Finance', slug: 'finance', description: 'Financial news and advice', imageUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3', articleCount: 54 },
-      { id: this.currentIds.categories++, name: 'Smartphones', slug: 'smartphones', description: 'Latest smartphone reviews', imageUrl: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9', articleCount: 122 },
-    ];
-    
-    categories.forEach(category => {
-      this.categories.set(category.id, category as Category);
-    });
-  }
-
-  // User operations
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
   }
   
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === email,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentIds.users++;
-    const user: User = { ...insertUser, id, points: 0 };
-    this.users.set(id, user);
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
   
-  async updateUserPoints(userId: number, points: number): Promise<User | undefined> {
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+  
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+  
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+  
+  async updateUserPoints(userId: number, pointsToAdd: number): Promise<User | undefined> {
     const user = await this.getUser(userId);
     if (!user) return undefined;
     
-    const updatedUser = { 
-      ...user, 
-      points: (user.points || 0) + points 
-    };
-    this.users.set(userId, updatedUser);
+    const newPoints = (user.points || 0) + pointsToAdd;
+    const [updatedUser] = await db
+      .update(users)
+      .set({ points: newPoints })
+      .where(eq(users.id, userId))
+      .returning();
+    
     return updatedUser;
   }
   
   // Category operations
   async getCategories(): Promise<Category[]> {
-    return Array.from(this.categories.values());
+    return db.select().from(categories);
   }
   
   async getCategoryBySlug(slug: string): Promise<Category | undefined> {
-    return Array.from(this.categories.values()).find(
-      (category) => category.slug === slug,
-    );
+    const [category] = await db.select().from(categories).where(eq(categories.slug, slug));
+    return category;
   }
   
   async createCategory(insertCategory: InsertCategory): Promise<Category> {
-    const id = this.currentIds.categories++;
-    const category: Category = { ...insertCategory, id, articleCount: 0 };
-    this.categories.set(id, category);
+    const [category] = await db.insert(categories).values(insertCategory).returning();
     return category;
   }
   
   // Article operations
   async getArticles(limit?: number): Promise<Article[]> {
-    const articles = Array.from(this.articles.values());
-    return limit ? articles.slice(0, limit) : articles;
+    const query = db.select().from(articles).orderBy(desc(articles.createdAt));
+    
+    if (limit) {
+      query.limit(limit);
+    }
+    
+    return query;
   }
   
   async getArticlesByCategory(categoryId: number, limit?: number): Promise<Article[]> {
-    const articles = Array.from(this.articles.values())
-      .filter(article => article.categoryId === categoryId);
-    return limit ? articles.slice(0, limit) : articles;
+    const query = db
+      .select()
+      .from(articles)
+      .where(eq(articles.categoryId, categoryId))
+      .orderBy(desc(articles.createdAt));
+    
+    if (limit) {
+      query.limit(limit);
+    }
+    
+    return query;
   }
   
   async getArticleBySlug(slug: string): Promise<Article | undefined> {
-    return Array.from(this.articles.values()).find(
-      (article) => article.slug === slug,
-    );
+    const [article] = await db.select().from(articles).where(eq(articles.slug, slug));
+    return article;
   }
   
   async createArticle(insertArticle: InsertArticle): Promise<Article> {
-    const id = this.currentIds.articles++;
-    const article: Article = { 
-      ...insertArticle, 
-      id, 
-      createdAt: new Date() 
-    };
-    this.articles.set(id, article);
+    const [article] = await db.insert(articles).values(insertArticle).returning();
     
-    // Update article count for category
-    if (article.categoryId) {
-      const category = this.categories.get(article.categoryId);
-      if (category) {
-        const updatedCategory = {
-          ...category,
-          articleCount: (category.articleCount || 0) + 1
-        };
-        this.categories.set(article.categoryId, updatedCategory);
-      }
+    if (insertArticle.categoryId) {
+      // Update the article count for the category
+      await db
+        .update(categories)
+        .set({
+          articleCount: count(articles.id)
+        })
+        .where(eq(categories.id, insertArticle.categoryId));
     }
     
     return article;
@@ -222,108 +170,112 @@ export class MemStorage implements IStorage {
   
   // Product operations
   async getProducts(limit?: number): Promise<Product[]> {
-    const products = Array.from(this.products.values());
-    return limit ? products.slice(0, limit) : products;
+    const query = db.select().from(products);
+    
+    if (limit) {
+      query.limit(limit);
+    }
+    
+    return query;
   }
   
   async getProductById(id: number): Promise<Product | undefined> {
-    return this.products.get(id);
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product;
   }
   
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const id = this.currentIds.products++;
-    const product: Product = { ...insertProduct, id };
-    this.products.set(id, product);
+    const [product] = await db.insert(products).values(insertProduct).returning();
     return product;
   }
   
   // Product comparison operations
   async getProductComparisons(limit?: number): Promise<any[]> {
-    const comparisons = Array.from(this.productComparisons.values());
-    return limit ? comparisons.slice(0, limit) : comparisons;
+    const query = db.select().from(products);
+    
+    if (limit) {
+      query.limit(limit);
+    }
+    
+    return query;
   }
   
   // Destination operations
   async getDestinations(limit?: number): Promise<Destination[]> {
-    const destinations = Array.from(this.destinations.values());
-    return limit ? destinations.slice(0, limit) : destinations;
+    const query = db.select().from(destinations);
+    
+    if (limit) {
+      query.limit(limit);
+    }
+    
+    return query;
   }
   
   async getDestinationById(id: number): Promise<Destination | undefined> {
-    return this.destinations.get(id);
+    const [destination] = await db.select().from(destinations).where(eq(destinations.id, id));
+    return destination;
   }
   
   async createDestination(insertDestination: InsertDestination): Promise<Destination> {
-    const id = this.currentIds.destinations++;
-    const destination: Destination = { ...insertDestination, id };
-    this.destinations.set(id, destination);
+    const [destination] = await db.insert(destinations).values(insertDestination).returning();
     return destination;
   }
   
   // Challenge operations
   async getChallenges(limit?: number): Promise<Challenge[]> {
-    const challenges = Array.from(this.challenges.values());
-    return limit ? challenges.slice(0, limit) : challenges;
+    const query = db.select().from(challenges);
+    
+    if (limit) {
+      query.limit(limit);
+    }
+    
+    return query;
   }
   
   async getChallengeById(id: number): Promise<Challenge | undefined> {
-    return this.challenges.get(id);
+    const [challenge] = await db.select().from(challenges).where(eq(challenges.id, id));
+    return challenge;
   }
   
   async createChallenge(insertChallenge: InsertChallenge): Promise<Challenge> {
-    const id = this.currentIds.challenges++;
-    const challenge: Challenge = { ...insertChallenge, id, participantCount: 0 };
-    this.challenges.set(id, challenge);
+    const [challenge] = await db.insert(challenges).values(insertChallenge).returning();
     return challenge;
   }
   
   // User badge operations
   async getUserBadges(userId: number): Promise<any[]> {
-    return Array.from(this.userBadges.values())
-      .filter(badge => badge.userId === userId);
+    return db.select().from(userBadges).where(eq(userBadges.userId, userId));
   }
   
   async addUserBadge(userId: number, badgeName: string): Promise<any> {
-    const id = this.currentIds.userBadges++;
-    const badge = { 
-      id, 
-      userId, 
-      badgeName, 
-      earnedAt: new Date() 
-    };
-    this.userBadges.set(id, badge);
+    const [badge] = await db
+      .insert(userBadges)
+      .values({ userId, badgeName })
+      .returning();
     return badge;
   }
   
   // User challenge operations
   async getUserChallenges(userId: number): Promise<any[]> {
-    return Array.from(this.userChallenges.values())
-      .filter(challenge => challenge.userId === userId);
+    return db.select().from(userChallenges).where(eq(userChallenges.userId, userId));
   }
   
   async addUserChallenge(userId: number, challengeId: number, score: number): Promise<any> {
-    const id = this.currentIds.userChallenges++;
-    const userChallenge = { 
-      id, 
-      userId, 
-      challengeId, 
-      score, 
-      completedAt: new Date() 
-    };
-    this.userChallenges.set(id, userChallenge);
+    const [userChallenge] = await db
+      .insert(userChallenges)
+      .values({ userId, challengeId, score })
+      .returning();
     
     // Update participant count for the challenge
-    const challenge = this.challenges.get(challengeId);
-    if (challenge) {
-      const updatedChallenge = {
-        ...challenge,
-        participantCount: (challenge.participantCount || 0) + 1
-      };
-      this.challenges.set(challengeId, updatedChallenge);
-    }
+    await db
+      .update(challenges)
+      .set({
+        participantCount: count(userChallenges.id)
+      })
+      .where(eq(challenges.id, challengeId));
     
     return userChallenge;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
