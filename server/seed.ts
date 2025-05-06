@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import { 
   categories, 
   users, 
@@ -199,7 +199,6 @@ seed()
     process.exit(1);
   })
   .finally(() => {
-    // Close the database connection
-    db.client.close();
+    // Exit the process - the connection will close automatically
     process.exit(0);
   });
